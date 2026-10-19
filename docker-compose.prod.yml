@@ -1,0 +1,241 @@
+# docker-compose.prod.yml — ambiente de PRODUÇÃO da WeLog.
+# Assets são compilados na imagem (multi-stage); não há serviço Vite.
+# Uso:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml exec app php artisan migrate --force
+#   docker compose -f docker-compose.prod.yml exec app php artisan config:cache route:cache view:cache
+services:
+  app:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile.prod
+      target: runtime
+      args:
+        # Vite embute estas no bundle durante o build da imagem — o .env não
+        # chega lá. Ver docs/OBSERVABILIDADE.md.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+        VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+    # A imagem é construída na própria VPS (pelo runner do GitLab ou pelo
+    # deploy.sh). WELOG_IMAGE existe só para apontar um registry, se um dia
+    # fizer sentido separar build de deploy.
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    env_file: .env
+    volumes:
+      # Publica o public/ compilado (inclui public/build) num volume que o
+      # nginx lê. O Docker popula o volume a partir da imagem na 1ª subida.
+      - app-public:/var/www/public
+      # Uploads e logs precisam sobreviver ao recreate E ser os MESMOS vistos
+      # pelo worker e pelo scheduler (o consume-appnoz-directory lê o inbox
+      # que o app gravou).
+      - app-storage:/var/www/storage
+      # Somente leitura: permite conferir o estado dos backups pelo app
+      # (`php artisan welog:backup:status`) sem poder corrompê-los.
+      - welog-backups:/backups:ro
+    depends_on:
+      - redis
+    networks:
+      - welog-network
+
+  # Worker de fundo: varreduras e integrações. `webhooks`, `imports` e `mail`
+  # estão na lista só como reserva — se o worker dedicado deles estiver fora do
+  # ar, o trabalho ainda é processado por aqui em vez de ficar parado na fila.
+  worker:
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php /var/www/artisan queue:work redis --queue=webhooks,integrations,imports,mail,default --tries=3 --timeout=120 --max-time=3600
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/storage
+    depends_on:
+      - app
+      - redis
+    networks:
+      - welog-network
+
+  # Worker DEDICADO ao webhook. Existe porque prioridade de fila não
+  # interrompe job em andamento: com um processo só, um pedido que chegava
+  # durante a reconciliação (ou o rastreio dos Correios) esperava a varredura
+  # inteira terminar — minutos até o Projeto aparecer e o card nascer. Este
+  # processo nunca pega trabalho longo, então o webhook entra na hora.
+  worker-webhooks:
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php /var/www/artisan queue:work redis --queue=webhooks --tries=3 --timeout=120 --max-time=3600
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/storage
+    depends_on:
+      - app
+      - redis
+    networks:
+      - welog-network
+
+  # Worker DEDICADO à planilha de Colaboradores. Pelo mesmo motivo do de
+  # webhook: atrás da reconciliação da Omie, uma planilha de nove mil linhas
+  # esperava cada varredura terminar. `mail` vem depois como reserva.
+  worker-imports:
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php /var/www/artisan queue:work redis --queue=imports,mail --tries=3 --timeout=120 --max-time=3600
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/storage
+    depends_on:
+      - app
+      - redis
+    networks:
+      - welog-network
+
+  # Worker DEDICADO aos e-mails. Envio é espera de rede, não CPU: um processo
+  # só para ele não pesa na VPS e tira o convite de trás das integrações —
+  # foi lá que o convite parado ficou esperando. Um processo, de propósito: o
+  # provedor limita requisições por segundo.
+  worker-mail:
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php /var/www/artisan queue:work redis --queue=mail --tries=5 --timeout=60 --max-time=3600
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/storage
+    depends_on:
+      - app
+      - redis
+    networks:
+      - welog-network
+
+  scheduler:
+    image: ${WELOG_IMAGE:-welog-app-prod}
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php /var/www/artisan schedule:work
+    env_file: .env
+    volumes:
+      - app-storage:/var/www/storage
+    depends_on:
+      - app
+      - redis
+    networks:
+      - welog-network
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - app-public:/var/www/public:ro          # assets compilados vindos da imagem do app
+      # public/storage é um symlink para cá. Sem este mount o nginx segue o link
+      # para um caminho inexistente e as fotos de kit respondem 404.
+      - app-storage:/var/www/storage:ro
+      - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # Faixas do Cloudflare para o IP real do visitante (real_ip). Incluído
+      # pelo prod.conf; sem o arquivo o nginx nem sobe.
+      - ./docker/nginx/cloudflare.conf:/etc/nginx/cloudflare.conf:ro
+      - certbot-conf:/etc/letsencrypt           # cert real + fallback self-signed (nginx grava se faltar)
+      - certbot-www:/var/certbot:ro            # webroot do desafio ACME (fora de /var/www:ro)
+    # Se ainda não há certificado, gera um self-signed de fallback no boot — o
+    # nginx NUNCA crash-loopa por falta de cert. Recarrega a cada 6h para
+    # adotar o certificado real assim que o Let's Encrypt o emitir.
+    command: >-
+      /bin/sh -c "[ -f /etc/letsencrypt/live/welog/fullchain.pem ]
+      || { apk add --no-cache openssl >/dev/null 2>&1;
+      mkdir -p /etc/letsencrypt/live/welog;
+      openssl req -x509 -nodes -newkey rsa:2048 -days 3650
+      -keyout /etc/letsencrypt/live/welog/privkey.pem
+      -out /etc/letsencrypt/live/welog/fullchain.pem
+      -subj '/CN=localhost'; };
+      while :; do sleep 6h & wait $${!}; nginx -s reload; done
+      & nginx -g 'daemon off;'"
+    depends_on:
+      - app
+    networks:
+      - welog-network
+
+  # Renovação automática do TLS (Let's Encrypt). O PRIMEIRO certificado é
+  # emitido por docker/nginx/init-letsencrypt.sh; este serviço só renova.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
+    networks:
+      - welog-network
+
+  # O Postgres NÃO faz parte desta stack: roda em máquina própria, apontada por
+  # DB_HOST/DB_PORT no .env. Nada aqui expõe a porta 5432.
+
+  # Backup automático do Postgres (remoto), com cópia externa no Backblaze B2.
+  # Ver docs/BACKUP.md.
+  backup:
+    build:
+      context: .
+      dockerfile: ./docker/backup/Dockerfile
+      args:
+        # Precisa ser >= à versão do servidor, senão o pg_dump se recusa a rodar.
+        PG_VERSION: ${PG_VERSION:-16}
+    image: welog-backup
+    restart: unless-stopped
+    environment:
+      # Mesmas credenciais que a aplicação usa — o banco é externo.
+      - PGHOST=${DB_HOST}
+      - PGPORT=${DB_PORT:-5432}
+      - PGDATABASE=${DB_DATABASE}
+      - PGUSER=${DB_USERNAME}
+      - PGPASSWORD=${DB_PASSWORD}
+      # O dump atravessa a rede: exija TLS quando o banco não for local.
+      - PGSSLMODE=${DB_SSLMODE:-prefer}
+      # Preenchido quando existe o CA (verify-full). Ver docs/BACKUP.md.
+      - PGSSLROOTCERT=${DB_SSLROOTCERT:-}
+      - TZ=${WELOG_BUSINESS_TIMEZONE:-America/Sao_Paulo}
+      - BACKUP_TIME=${BACKUP_TIME:-03:30}
+      - BACKUP_RETAIN_DAILY=${BACKUP_RETAIN_DAILY:-14}
+      - BACKUP_RETAIN_WEEKLY=${BACKUP_RETAIN_WEEKLY:-8}
+      # Backblaze B2 (endpoint S3-compatível). Sem B2_BUCKET a cópia externa
+      # é pulada e o backup fica só local.
+      - B2_BUCKET=${B2_BUCKET:-}
+      - B2_ENDPOINT=${B2_ENDPOINT:-}
+      - B2_PREFIX=${B2_PREFIX:-welog}
+      - AWS_ACCESS_KEY_ID=${B2_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${B2_APPLICATION_KEY:-}
+      - AWS_DEFAULT_REGION=${B2_REGION:-us-west-004}
+    volumes:
+      - welog-backups:/backups
+      - ./docker/backup:/scripts:ro
+      # CA do banco gerenciado (baixe do painel da DigitalOcean). O diretório é
+      # versionado com .gitignore dentro; o certificado em si não é segredo.
+      - ./docker/backup/certs:/certs:ro
+    networks:
+      - welog-network
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - welog-redis-data:/data
+    networks:
+      - welog-network
+
+networks:
+  welog-network:
+    driver: bridge
+
+volumes:
+  # Sem welog-db-data: o Postgres é externo, com storage e backup próprios do
+  # lado dele. O volume welog-backups guarda só os dumps que geramos aqui.
+  welog-redis-data:
+  welog-backups:
+  certbot-conf:
+  certbot-www:
+  app-public:
+  app-storage:

@@ -1,0 +1,38 @@
+# O Dockerfile.prod faz `COPY . .`; sem esta lista o .env com as credenciais
+# REAIS de produção e todo o histórico .git entram nas camadas da imagem —
+# legíveis por qualquer um que consiga puxar a imagem.
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.gitattributes
+
+# Reinstalados/compilados nos estágios do multi-stage
+node_modules
+vendor
+public/build
+public/hot
+
+# Conteúdo volátil — os diretórios continuam existindo (ver .gitignore do Laravel)
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/private/*
+storage/app/public/*
+bootstrap/cache/*.php
+
+# Não fazem parte do runtime
+tests
+docs
+.github
+.vscode
+.idea
+docker-compose.yml
+docker-compose.prod.yml
+phpunit.xml
+README.md
+*.md

@@ -1,0 +1,69 @@
+{
+  "skus": [
+    {
+      "sku": "SUV-PINCEL-01",
+      "enabled": true,
+      "product": {
+        "parentCode": "SUV-PINCEL-01",
+        "name": "Kit Pincéis Profissional Suvinil",
+        "description": "Conjunto com três pincéis profissionais.",
+        "productType": "Casa e Construção",
+        "department": "Ferramentas"
+      },
+      "images": ["https://cdn.reconhece.com.br/suv-pincel-01.jpg"]
+    },
+    {
+      "sku": "MOLETOM-PRETO-G",
+      "enabled": true,
+      "skuName": "Moletom preto, tamanho G",
+      "color": "Preto",
+      "size": "G",
+      "product": {
+        "parentCode": "MOLETOM",
+        "name": "Moletom com Capuz",
+        "description": "Moletom com capuz e bolso canguru.",
+        "productType": "Vestuário",
+        "department": "Moletons"
+      },
+      "images": ["https://cdn.reconhece.com.br/moletom-preto.jpg"]
+    },
+    {
+      "sku": "MOLETOM-PRETO-M",
+      "enabled": true,
+      "skuName": "Moletom preto, tamanho M",
+      "color": "Preto",
+      "size": "M",
+      "product": {
+        "parentCode": "MOLETOM",
+        "name": "Moletom com Capuz",
+        "description": "Moletom com capuz e bolso canguru.",
+        "productType": "Vestuário",
+        "department": "Moletons"
+      },
+      "images": ["https://cdn.reconhece.com.br/moletom-preto.jpg"]
+    },
+    {
+      "sku": "VENT-BRANCO-110",
+      "enabled": true,
+      "color": "Branco",
+      "voltage": "110V",
+      "product": {
+        "parentCode": "VENTILADOR",
+        "name": "Ventilador de Mesa",
+        "description": "Ventilador de mesa 30 cm, 3 velocidades.",
+        "productType": "Eletroportáteis",
+        "department": "Ventilação"
+      }
+    },
+    {
+      "sku": "CODIGO-SO-DA-RECONHECE",
+      "enabled": false,
+      "product": {
+        "parentCode": "CODIGO-SO-DA-RECONHECE",
+        "name": "Item fora da vitrine",
+        "productType": "Casa e Construção",
+        "department": "Ferramentas"
+      }
+    }
+  ]
+}

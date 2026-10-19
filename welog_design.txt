@@ -1,0 +1,175 @@
+﻿Functional Design
+Plataforma WeLog
+
+Nota de Leitura
+Este documento descreve o escopo funcional da plataforma WeLog, contemplando os dois fluxos operacionais que ela irá suportar. O foco deste Functional Design é o "o quê" da solução: módulos, fluxos, integrações e regras de negócio.
+O detalhamento micro de implementação técnica, bem como esclarecimentos operacionais específicos de cada módulo ("o como"), serão tratados progressivamente ao longo das reuniões de acompanhamento realizadas durante a etapa de desenvolvimento, seguindo a metodologia ágil adotada pela CONTRATADA. Tais esclarecimentos não caracterizam alteração de escopo funcional, conforme previsto no Contrato de Prestação de Serviços.
+Objetivo
+A plataforma WeLog terá como objetivo estruturar, automatizar e centralizar dois fluxos operacionais distintos da CONTRATANTE: (i) a gestão do ciclo completo de kits corporativos vendidos sob demanda para clientes empresariais, doravante denominado Fluxo A; e (ii) o processamento das solicitações de resgate originadas na plataforma appnoz, no âmbito do programa Pintou Parceria da Suvinil, doravante denominado Fluxo B.
+A solução conectará a WeLog ao ERP Omie, ao Trello (operação), à plataforma appnoz (por meio de importação de arquivos) e às transportadoras Correios e Flash, mantendo a Omie como fonte da verdade para cadastro de produtos, pedidos de venda e emissão fiscal. O cadastro dos clientes finais autorizados a efetuar resgate no Fluxo A permanece sob responsabilidade exclusiva da WeLog.
+A WeLog substituirá processos hoje realizados de forma manual, preservando as regras de negócio e fluxos operacionais existentes, que poderão receber ajustes técnicos, otimizações e melhorias de implementação, com o objetivo de aumentar a performance, escalabilidade, robustez e facilidade de manutenção do sistema.
+Visão Geral do Sistema
+O sistema será organizado de forma modular, garantindo clareza funcional, escalabilidade e manutenção evolutiva ao longo do tempo.
+A arquitetura de integração adotará a Omie como núcleo transacional para os aspectos fiscais e logísticos. Cadastros de produtos, pedidos de venda e emissões de nota fiscal permanecerão sob responsabilidade da Omie. A WeLog atuará como camada de orquestração operacional, gestão de projetos, cadastro dos clientes finais no Fluxo A, interface com os clientes finais e agregação de informações de rastreabilidade.
+O Trello permanece como sistema operacional de pipeline, gerenciando as etapas de design, produção, picking, packing e emissão de nota fiscal. A WeLog comunica-se com o Trello por meio de criação de cards via API e recepção de webhooks para refletir os estágios do pipeline.
+Fluxo A – Kits Corporativos sob Demanda
+O Fluxo A corresponde à operação de venda e entrega de kits personalizados para clientes empresariais, com produção sob demanda. Este fluxo é integralmente orquestrado a partir do momento em que o Pedido de Venda é registrado na Omie.
+Etapas do fluxo:
+[ListParagraph] O cliente empresa formaliza junto à CONTRATANTE o pedido de compra dos kits corporativos.
+[ListParagraph] O operador WeGift cadastra os produtos (kits) e registra o Pedido de Venda correspondente na Omie.
+[ListParagraph] A partir do registro do Pedido de Venda na Omie, a WeLog recebe automaticamente as informações necessárias para criar um “Projeto”, contendo, nesse primeiro momento, apenas dados macro: cliente, quantidades, prazo de entrega e demais informações gerais do pedido.
+[ListParagraph] Simultaneamente, é criado no Trello o card correspondente ao Projeto, dentro do pipeline operacional utilizado pela CONTRATANTE para acompanhar design, produção, picking, packing e emissão de nota fiscal.
+[ListParagraph] Ao longo do ciclo produtivo, o Trello envia webhooks para a WeLog a cada mudança de estágio do card, permitindo que o Projeto reflita o status atual (por exemplo: em design, em produção, em picking).
+[ListParagraph] Em paralelo ao ciclo produtivo, a CONTRATANTE realiza o cadastro dos clientes finais autorizados a efetuar resgate no Projeto. Este cadastro é realizado exclusivamente na WeLog, sem qualquer interação com a Omie, podendo ocorrer de duas formas: (i) manualmente, um a um, pelo operador WeGift ou pelo administrador da empresa cliente; ou (ii) em lote, mediante upload de template Excel com campos pré-definidos.
+[ListParagraph] Quando a produção é concluída e o estoque dos kits está disponível na Omie, esta notifica a WeLog sobre a disponibilidade do estoque associado ao Projeto.
+[ListParagraph] Com o estoque disponível, o usuário WeGift ganha permissão para liberar o Projeto e notificar os clientes finais previamente cadastrados na WeLog.
+[ListParagraph] Os clientes finais recebem notificação por e-mail com as instruções de resgate.
+[ListParagraph] O cliente final acessa a WeLog, seleciona o kit ou produto ao qual tem direito, informa endereço de entrega e confirma o resgate.
+[ListParagraph] O operador WeGift define, para o resgate, a transportadora a ser utilizada, de acordo com as características do produto e da entrega.
+[ListParagraph] A partir da expedição, a WeLog acompanha o pedido até a entrega no endereço do cliente final, com atualização de status e código de rastreio conforme integrações descritas no módulo de Integrações com Transportadoras.
+Observação: após a Omie sinalizar disponibilidade de estoque, o resgate ocorre integralmente dentro da WeLog. Não há retorno de informação para a Omie referente à baixa individual de cada resgate. A responsabilidade da Omie no Fluxo A encerra-se na sinalização de estoque disponível.
+Fluxo B – Resgates Suvinil (Pintou Parceria)
+O Fluxo B corresponde ao processamento de resgates originados na plataforma appnoz, no âmbito do programa Pintou Parceria da Suvinil. Neste fluxo, o estoque já se encontra previamente disponível e não há ciclo produtivo sob demanda.
+Etapas do fluxo:
+[ListParagraph] O usuário administrador WeGift atualiza periodicamente, na plataforma appnoz (suvinil.appnoz.com.br), os produtos disponíveis e seus respectivos saldos de estoque.
+[ListParagraph] Os clientes finais da Suvinil, dentro do programa de pontuação gerenciado pela própria Suvinil, efetuam solicitações de resgate diretamente na plataforma appnoz. A WeLog não participa dessa etapa.
+[ListParagraph] Periodicamente, o usuário WeGift acessa a plataforma appnoz, gera um relatório em formato Excel contendo as solicitações de resgate do período e salva o arquivo em um diretório específico previamente definido.
+[ListParagraph] A WeLog consome os arquivos disponibilizados no diretório e realiza o carregamento estruturado dos dados, executando as seguintes validações antes de criar o Pedido de Venda na Omie:
+[ListParagraph] Verificação do cadastro do cliente final (identificado pelo CPF do solicitante do resgate) na Omie. Caso o cliente não esteja cadastrado, a WeLog realiza o cadastro automaticamente na Omie a partir das informações disponíveis na planilha, sem interromper o processamento.
+[ListParagraph] Verificação do cadastro do produto (identificado pelo código do produto) na Omie. Caso o produto não esteja cadastrado, o sistema exibe alerta de interface e bloqueia o avanço do respectivo registro até correção manual pelo operador. Esta é a única condição bloqueante do fluxo.
+[ListParagraph] Preenchimento do código do benefício fiscal aplicável, com base em tabela de parametrização a ser mantida na WeLog.
+[ListParagraph] Validação estrutural dos demais atributos da planilha. Inconsistências estruturais (campos obrigatórios ausentes, formatos inválidos) geram alerta de interface até a devida correção.
+[ListParagraph] Após validação, a WeLog cria o Pedido de Venda correspondente na Omie, sinalizado como “Importação”.
+[ListParagraph] A partir da criação do Pedido de Venda na Omie, é criado no Trello o card correspondente, restrito aos estágios finais do pipeline operacional: picking, packing e emissão de nota fiscal. Não há etapa de produção neste fluxo.
+[ListParagraph] Após a emissão da nota fiscal pela Omie, o pedido segue para expedição via Flash, conforme detalhado no módulo de Integrações com Transportadoras.
+[ListParagraph] A WeLog consulta o código de rastreio junto à Flash e realiza o acompanhamento do pedido até a entrega.
+Módulos
+1. Sincronização e Integração com Omie ERP
+Módulo responsável pela integração da WeLog com a Omie, mantendo esta última como fonte da verdade sobre cadastros de produtos, pedidos de venda e emissão fiscal.
+[ListParagraph] Recepção, na WeLog, das informações de novos Pedidos de Venda registrados na Omie, para criação automática do Projeto (Fluxo A).
+[ListParagraph] Recepção de sinalização de disponibilidade de estoque associado ao Projeto, autorizando a liberação para resgate (Fluxo A).
+[ListParagraph] Envio de novos Pedidos de Venda originados da importação de arquivos da appnoz para a Omie, com marcação de “Importação” (Fluxo B).
+[ListParagraph] Consulta a cadastros de produtos na Omie durante o processo de importação de resgates (Fluxo B), com bloqueio de avanço em caso de produto não cadastrado.
+[ListParagraph] Consulta e criação automática, quando necessário, de cadastros de clientes finais na Omie durante o processamento do Fluxo B, sem interromper o processamento.
+[ListParagraph] Emissão de notas fiscais permanece sob responsabilidade exclusiva da Omie, para ambos os fluxos.
+2. Gestão de Projetos (Fluxo A)
+Módulo responsável pela representação, na WeLog, do ciclo completo de cada kit corporativo vendido sob demanda.
+[ListParagraph] Criação automática do Projeto a partir do gatilho da Omie (registro do Pedido de Venda).
+[ListParagraph] Dados iniciais do Projeto: cliente, quantidades, prazo de entrega, informações macro do pedido.
+[ListParagraph] Vinculação do Projeto ao card correspondente no Trello.
+[ListParagraph] Atualização automática do status do Projeto conforme os estágios do card no Trello, refletidos por meio de webhooks.
+[ListParagraph] Marcação de estoque disponível a partir da sinalização recebida da Omie.
+[ListParagraph] Liberação do Projeto para resgate, mediante ação do usuário WeGift.
+[ListParagraph] Gatilho de notificação aos clientes finais previamente cadastrados na WeLog e autorizados no Projeto.
+[ListParagraph] Painel de acompanhamento com visão consolidada dos Projetos e seus estágios.
+[ListParagraph] Em caso de falha na comunicação com a Omie, o cadastro manual do Projeto pela interface da WeLog será permitido como fallback (onboarding manual de kits).
+3. Importação de Resgates appnoz (Fluxo B)
+Módulo responsável pelo processamento dos arquivos exportados da plataforma appnoz e pela criação estruturada dos Pedidos de Venda correspondentes na Omie.
+[ListParagraph] Consumo dos arquivos disponibilizados em diretório específico pelo usuário WeGift.
+[ListParagraph] Leitura estruturada do conteúdo dos arquivos e mapeamento dos campos exigidos para criação de Pedido de Venda na Omie.
+[ListParagraph] Verificação do cadastro do cliente final na Omie. Caso ausente, o cliente é criado automaticamente pela WeLog na Omie com base nas informações da planilha, sem interromper o processamento.
+[ListParagraph] Verificação do cadastro do produto na Omie. Caso ausente, o registro correspondente é bloqueado até correção manual. Esta é a única condição bloqueante do fluxo de importação.
+[ListParagraph] Aplicação automática do código do benefício fiscal a partir de tabela de parametrização mantida na WeLog.
+[ListParagraph] Tratamento de erros estruturais de interface com mensagens específicas até correção pelo usuário.
+[ListParagraph] Criação do Pedido de Venda na Omie, marcado como “Importação”.
+[ListParagraph] Registro de histórico de importações, permitindo consulta a lotes processados, com identificação de arquivos, quantidades, registros criados automaticamente e eventuais bloqueios.
+4. Integração com Trello
+Módulo responsável pela comunicação bidirecional com o Trello, sistema operacional utilizado pela CONTRATANTE para gestão do pipeline produtivo.
+[ListParagraph] Criação automática de cards no Trello no momento da criação do Projeto (Fluxo A) ou do Pedido de Venda importado (Fluxo B).
+[ListParagraph] No Fluxo A, o card acompanha o ciclo completo, incluindo etapas produtivas.
+[ListParagraph] No Fluxo B, o card é criado apenas para os estágios finais do pipeline (picking, packing, emissão de nota fiscal).
+[ListParagraph] Recepção de webhooks a cada mudança de estágio do card, para atualização do status do Projeto ou Pedido correspondente na WeLog.
+[ListParagraph] A WeLog atua como espelho passivo dos estágios do Trello. A gestão operacional em si permanece no Trello.
+5. Catálogo de Produtos e Kits
+Módulo responsável pela consulta e exibição dos produtos e kits disponíveis para resgate, com base nas informações mantidas na Omie.
+[ListParagraph] Consulta ao cadastro de produtos na Omie por meio da integração descrita no Módulo 1.
+[ListParagraph] Representação dos kits com sua respectiva estrutura BOM (Bill of Materials), permitindo visão consolidada do kit e dos componentes individuais que o compõem.
+[ListParagraph] Exibição de informações descritivas, imagens e indicação de disponibilidade conforme saldo na Omie.
+[ListParagraph] Aplicação de regras de visibilidade conforme o vínculo entre cliente final e Projeto (Fluxo A).
+6. Portal de Resgate (Fluxo A)
+Módulo destinado à interação do cliente final (colaborador da empresa cliente) com a WeLog para efetivação do resgate.
+[ListParagraph] Autenticação individual do cliente final.
+[ListParagraph] Visualização dos kits e produtos disponíveis conforme o Projeto ao qual o cliente está vinculado.
+[ListParagraph] Preenchimento de endereço de entrega e demais informações necessárias à expedição.
+[ListParagraph] Confirmação do resgate e geração da solicitação de expedição.
+[ListParagraph] Acompanhamento do status do pedido após a confirmação, com visualização de código de rastreio quando disponível.
+[ListParagraph] Histórico de resgates realizados pelo cliente final.
+7. Cadastro de Clientes Finais (Fluxo A)
+Módulo responsável pelo cadastro e gestão dos clientes finais (colaboradores das empresas clientes) autorizados a efetuar resgate em cada Projeto do Fluxo A. O cadastro é realizado exclusivamente na WeLog, sem interação com a Omie.
+Modalidades de cadastro:
+[ListParagraph] Manual: cadastro individual, um cliente por vez, realizado pelo operador WeGift ou pelo administrador da empresa cliente.
+[ListParagraph] Em lote: upload de template Excel padronizado com campos pré-definidos, permitindo criação simultânea de múltiplos clientes finais vinculados a um Projeto.
+Regras gerais:
+[ListParagraph] Vinculação obrigatória de cada cliente final a um Projeto específico.
+[ListParagraph] Validação estrutural dos campos no momento do cadastro, com mensagens de erro específicas em caso de inconsistência.
+[ListParagraph] O cliente final passa a receber notificação de resgate apenas após o Projeto ser liberado pelo usuário WeGift.
+8. Integrações com Transportadoras
+Módulo responsável pela comunicação com as transportadoras utilizadas em cada fluxo, contemplando envio de informações de expedição e consulta de rastreio.
+Fluxo A (não Suvinil):
+[ListParagraph] Correios: integração automática via API, para envio de informações do pedido e obtenção de código de rastreio.
+[ListParagraph] MRB e DDM Log: transportadoras utilizadas pontualmente, sem disponibilidade de API. O código de rastreio será inserido manualmente pelo usuário WeGift na WeLog.
+[ListParagraph] A definição da transportadora aplicável a cada resgate é feita pelo usuário WeGift, de acordo com as características do produto e da entrega.
+Fluxo B (Suvinil):
+[ListParagraph] Flash: contempla duas interfaces distintas com a WeLog.
+[ListParagraph] Envio diário automatizado, previsto para 19h, dos XMLs das notas fiscais emitidas pela Omie no dia corrente, transmitidos via API para a Flash, autorizando a coleta.
+[ListParagraph] Consulta ao código de rastreio e status de entrega, mediante API disponibilizada pela Flash, após a coleta ser efetivada.
+[ListParagraph] Estas interfaces serão desenhadas na WeLog com base na lógica atualmente em operação, uma vez que o fornecedor responsável pela integração atual será descontinuado por questões contratuais. A comunicação com a Flash permanece.
+9. Rastreabilidade de Pedidos
+Módulo responsável pelo acompanhamento ponta a ponta do pedido, desde a solicitação até a entrega no destino final.
+[ListParagraph] Cruzamento das informações do Pedido de Venda (Omie), nota fiscal emitida (Omie) e código de rastreio (transportadora).
+[ListParagraph] Visualização consolidada do status atual do pedido, com reflexo dos estágios do Trello e do rastreio da transportadora.
+[ListParagraph] Disponibilização do rastreio para o cliente final (Fluxo A) e para o usuário WeGift em ambos os fluxos.
+[ListParagraph] Histórico completo por Projeto e por resgate.
+10. Gestão de Acessos e Permissões
+Módulo responsável pelo controle de acesso à plataforma e definição dos níveis de permissão por perfil de usuário.
+[ListParagraph] Admin WeGift: acesso completo à plataforma, incluindo configurações gerais, parametrizações, cadastros administrativos e visualização de todos os Projetos e Pedidos.
+[ListParagraph] Usuário WeGift Nível 1: acesso operacional pleno para gestão de Projetos, importações, liberação de resgates e acompanhamento de pedidos.
+[ListParagraph] Usuário WeGift Nível 2: acesso restrito a consultas e acompanhamento, sem permissão para ações críticas como liberação de Projeto ou execução de importações.
+[ListParagraph] Admin Cliente Final: usuário administrador da empresa cliente, com permissão para gerenciar os clientes finais vinculados ao seu workspace.
+[ListParagraph] Cliente Final: colaborador da empresa cliente, com permissão restrita ao seu próprio resgate.
+A hierarquia de vinculação segue a estrutura: Cliente (CNPJ) contém Admin Cliente Final, que contém Clientes Finais. Cada cliente final é vinculado a um ou mais Kits, conforme regra do Projeto correspondente.
+11. Comunicação Automatizada
+Módulo responsável pelo envio automatizado de comunicações por e-mail em eventos relevantes do ciclo operacional.
+[ListParagraph] Notificação aos clientes finais autorizados a efetuar resgate no momento em que o Projeto é liberado pelo usuário WeGift (Fluxo A).
+[ListParagraph] Notificação de confirmação de resgate ao cliente final, após efetivação da solicitação na WeLog.
+[ListParagraph] Notificação de atualização de status de pedido em eventos-chave, como emissão de nota fiscal, coleta pela transportadora e entrega efetivada.
+[ListParagraph] Modelos de e-mail parametrizáveis pelo Admin WeGift, com identidade visual da marca.
+12. Interface Web e Diretrizes de Experiência do Usuário
+A interface da WeLog será desenvolvida seguindo estilo visual minimalista, alinhado à identidade visual da CONTRATANTE.
+O foco da interface será clareza, objetividade e usabilidade, priorizando uma experiência fluida e intuitiva para os três perfis principais de usuário: operadores WeGift, administradores de clientes empresa e clientes finais.
+Durante a etapa de desenvolvimento, ajustes na interface, organização de elementos, fluxos de navegação e melhorias de UX poderão ser realizados de forma incremental, visando aprimorar a experiência do usuário e a eficiência operacional, sem que tais ajustes caracterizem alteração de escopo funcional.
+Eventuais mudanças estruturais que impliquem criação de novos módulos, alteração de regras de negócio ou modificação significativa de fluxo operacional serão tratadas como alteração de escopo, conforme previsto no Contrato de Prestação de Serviços.
+Arquitetura Técnica e Infraestrutura (Referencial)
+A solução será implementada utilizando infraestrutura em nuvem, visando garantir escalabilidade, disponibilidade e segurança do sistema.
+De forma referencial, a arquitetura técnica irá contemplar:
+[ListParagraph] Servidor / Cloud: infraestrutura em nuvem.
+[ListParagraph] Banco de Dados: banco de dados relacional.
+[ListParagraph] Armazenamento de Arquivos: serviço de cloud storage para documentos, anexos e arquivos importados.
+[ListParagraph] Ambiente de Aplicação: aplicação web com camadas de apresentação e serviços desacopladas.
+[ListParagraph] Segurança: controle de acesso, autenticação, criptografia de dados sensíveis e boas práticas de segurança da informação.
+A definição ou eventual substituição de tecnologias específicas não altera o escopo funcional do projeto, desde que mantidas as regras de negócio, fluxos operacionais e requisitos descritos neste Functional Design.
+Detalhamento e Reuniões de Acompanhamento
+Este Functional Design formaliza o escopo funcional da WeLog em termos de módulos, fluxos, integrações e regras de negócio.
+O detalhamento operacional micro de cada módulo (posicionamento de campos em tela, comportamento pontual de interface, definições técnicas de implementação, escolha entre alternativas equivalentes de arquitetura, entre outros aspectos análogos) será tratado de forma progressiva ao longo das reuniões de acompanhamento realizadas durante a etapa de desenvolvimento, seguindo a metodologia ágil adotada pela CONTRATADA.
+Cronograma de Entrega
+Após o aceite e a assinatura deste Functional Design, a CONTRATADA enviará à CONTRATANTE o detalhamento do cronograma de entrega, estruturado em metodologia ágil, com previsão total entre 20 (vinte) e 40 (quarenta) dias corridos.
+O cronograma será organizado nas seguintes etapas:
+[ListParagraph] Design Final: consolidação do desenho técnico e de interface a partir do escopo funcional definido neste documento.
+[ListParagraph] Build: desenvolvimento dos módulos e integrações descritos, em ciclos iterativos com validações contínuas.
+[ListParagraph] Unit and Integration Test: testes unitários e de integração dos módulos desenvolvidos, incluindo as integrações com Omie, Trello, appnoz e transportadoras.
+[ListParagraph] UAT (User Acceptance Test): período de testes de aceitação conduzidos junto à CONTRATANTE, para validação funcional da solução em ambiente controlado.
+[ListParagraph] Go Live: entrega oficial da plataforma em ambiente de produção, até o prazo máximo de 40 (quarenta) dias corridos a contar da assinatura deste documento.
+[ListParagraph] Stabilization: período de estabilização de 7 (sete) dias corridos após o Go Live, no qual eventuais ajustes e correções relacionados à entrega são tratados com prioridade pela CONTRATADA.
+Após o encerramento do período de estabilização, entrará em vigor o modelo de manutenção e serviço, conforme já descrito na Cláusula Quinta e na Cláusula Sexta do Contrato de Prestação de Serviços firmado entre as partes.
+Observação Comercial
+O presente Functional Design integra o Contrato de Prestação de Serviços firmado entre a Webox Soluções em Presentes Personalizados LTDA e a Logicsell AI Marketing Agency LTDA, na qualidade de ANEXO I, nos termos da Cláusula Segunda do referido contrato.
+A partir da assinatura deste documento pelas partes, define-se em definitivo o escopo estrutural do projeto, dando início à contagem dos prazos de entrega.
+
+
+Curitiba, _____ de julho de 2026.
+
+
+__________________________________________
+CONTRATANTE – Webox Soluções em Presentes Personalizados LTDA
+__________________________________________
+CONTRATADA – Logicsell AI Marketing Agency LTDA

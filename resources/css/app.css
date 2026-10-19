@@ -1,0 +1,449 @@
+/* A fonte é carregada por <link> no `app.blade.php` — um `@import` remoto aqui
+   só seria descoberto depois deste arquivo baixar, encadeando as requisições. */
+/* `source(none)` DESLIGA a varredura automática do Tailwind.
+   Sem isso, o `@source` abaixo apenas SOMA à detecção automática — o Tailwind
+   continua percorrendo a árvore do projeto inteira para descobrir onde há
+   classe. Num bind mount do Docker Desktop, onde cada leitura de arquivo custa
+   ~3ms, essa varredura dominava a primeira compilação.
+
+   Em troca, fonte nova precisa ser declarada aqui: classe escrita num arquivo
+   fora da lista simplesmente não gera CSS. É o custo de não deixar o Tailwind
+   adivinhar. */
+@import 'tailwindcss' source(none);
+
+@source '../js/**/*.{vue,js}';
+@source '../views/**/*.blade.php';
+
+@theme {
+    /* ═════════════════════════════════════════════════════════════
+       Todo valor de contraste neste arquivo foi CALCULADO, não
+       estimado. Ao mexer em qualquer cor, refaça a conta: os pisos
+       são 4,5:1 para texto e 3:1 para borda e componente (WCAG AA).
+       ═════════════════════════════════════════════════════════════ */
+
+    /* Fecha a paleta de fábrica do Tailwind. Sem isto, `bg-indigo-600`
+       volta a compilar em silêncio e a deriva recomeça — o build passa
+       a acusar erro em vez de aceitar cor de fora do sistema. */
+    --color-*: initial;
+
+    /* ─────────────────────────────────────────────────────────────
+       TIPOGRAFIA
+       A escala do Tailwind é MANTIDA, mas ganha os degraus grandes que
+       faltavam: 98% do texto vivia entre 12 e 16px, e uma tela onde
+       nada é grande não tem ponto focal — é a causa do "sem vida" que
+       nenhuma troca de cor resolve.
+       ───────────────────────────────────────────────────────────── */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji';
+    --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono', Menlo,
+        Consolas, 'Liberation Mono', monospace;
+
+    --text-stat: 1.75rem;              /* 28px — número de indicador */
+    --text-stat--line-height: 2rem;
+
+    /*
+     * Escala de HIERARQUIA. Os quatro níveis precisam ter salto perceptível
+     * entre si — 95% do texto vivia entre 12 e 16px, e nível que o olho não
+     * distingue não é nível.
+     */
+    --text-title: 1.75rem;             /* 28px — título de página, peso 700 */
+    --text-title--line-height: 2.125rem;
+    --text-title--letter-spacing: -0.02em;
+    --text-section: 1.125rem;          /* 18px — título de seção, peso 600 */
+    --text-section--line-height: 1.5rem;
+    --text-section--letter-spacing: -0.01em;
+
+    /* ─────────────────────────────────────────────────────────────
+       RAIO — dois degraus, e a distância entre eles é o ponto.
+
+       A tela inteira vivia entre 6px e 12px. Nessa faixa o olho não lê
+       "arredondado", lê "quadrado com o canto lixado": perto demais do
+       reto para suavizar, longe demais do reto para ser intencional.
+
+       Card em 16px e controle em 10px separam os dois papéis — o bloco
+       que contém e o objeto que se clica — e é essa diferença, não o
+       número em si, que faz a interface parecer desenhada.
+
+       `rounded-md`, `rounded-lg` e `rounded-xl` continuam existindo,
+       mas quem manda na aparência é `rounded-card` e `rounded-control`.
+       ───────────────────────────────────────────────────────────── */
+    --radius-card: 1rem;               /* 16px — cartão, painel, modal, drawer */
+    --radius-control: 0.625rem;        /* 10px — botão, campo, chip, aba */
+
+    /* Voz do portal. Não usar na área operacional: lá o espaço é escasso
+       e título grande rouba linha de tabela. */
+    --text-display: 2rem;              /* 32px — "Olá, Ana" */
+    --text-display--line-height: 2.375rem;
+    --text-display--letter-spacing: -0.025em;
+    --text-display-lg: 2.75rem;        /* 44px — celebração, confirmação */
+    --text-display-lg--line-height: 3rem;
+    --text-display-lg--letter-spacing: -0.03em;
+
+    /* ─────────────────────────────────────────────────────────────
+       NEUTROS — NEUTROS DE VERDADE, levemente frios.
+
+       Já foram taupe quente, pela teoria de que neutro frio "suja" o
+       laranja. Na tela montada aconteceu o oposto: com TODO cinza puxado
+       para o bege, laranja da marca, âmbar de aviso e o próprio fundo
+       viravam a mesma família de matiz, e a interface inteira lia como
+       monocromática — o "tudo branco e âmbar". Cinza neutro devolve o
+       contraste de TEMPERATURA: é ele que faz o laranja parecer escolha
+       e não maré, e é o que permite azul, verde, roxo e turquesa
+       registrarem como cores distintas em vez de sumirem no bege.
+
+       O nome é por PAPEL, e isso é o que torna a regra verificável —
+       `ink-subtle` é proibido em texto lido, e o revisor cobra isso.
+       ───────────────────────────────────────────────────────────── */
+    --color-canvas: #f5f6f8;          /* fundo da aplicação */
+    --color-surface: #ffffff;         /* cartão, tabela, modal, drawer */
+    --color-surface-muted: #eff1f4;   /* thead, hover de linha, campo desabilitado */
+    --color-surface-raised: #ffffff;  /* o que flutua — par obrigatório de shadow-overlay */
+    --color-line: #e2e5ea;            /* borda e divisória padrão */
+    --color-line-strong: #79828f;     /* borda de campo com contraste — 3,89:1 */
+    --color-ink: #141922;             /* texto primário — 17,62:1 */
+    --color-ink-muted: #59626f;       /* rótulo, texto secundário — 6,17:1 */
+    --color-ink-subtle: #888f9c;      /* ícone decorativo, separador — 3,25:1 */
+    --color-ink-inverse: #ffffff;
+
+    /* ─────────────────────────────────────────────────────────────
+       NAVEGAÇÃO — superfície CLARA.
+
+       A navegação já foi escura, e por um motivo real: sobre um canvas
+       quase branco, sidebar branca não tem degrau de luminosidade e o
+       app lê como uma folha só. Voltar ao claro exige resolver isso de
+       outro jeito, e são três peças, não uma:
+
+         1. a sidebar é BRANCA sobre canvas CINZA (#f5f6f8), e não o
+            contrário — o degrau existe, só que invertido;
+         2. `border-r border-nav-line` fecha a lateral: sem ela as duas
+            superfícies se encostam e a separação some no cinza claro;
+         3. o item ativo deixa de ser "um pouco mais claro que o fundo"
+            e passa a ser CHAPA da marca (brand-50) com texto brand-700
+            — sobre escuro bastava iluminar, sobre branco é preciso cor.
+
+       A contrapartida é conhecida e aceita: o laranja VIBRANTE (500,
+       3,13:1) não vive mais aqui. Marca em texto passa a ser o 700, e é
+       por isso que o "Log" da marca e o ícone do item ativo mudaram de
+       degrau — não é preferência, é o piso de 4,5:1.
+       ───────────────────────────────────────────────────────────── */
+    --color-nav: #ffffff;             /* superfície da navegação */
+    --color-nav-raised: #fff2eb;      /* item ativo, hover — brand-50 */
+    --color-nav-line: #e2e5ea;        /* divisória interna e borda lateral */
+    --color-nav-ink: #141922;         /* texto ativo/primário — 17,62:1 */
+    --color-nav-ink-muted: #59626f;   /* item inativo — 6,17:1 */
+    --color-nav-ink-subtle: #6b7482;  /* rótulo de grupo — 4,72:1 */
+
+    /* ─────────────────────────────────────────────────────────────
+       MARCA — laranja queimado, 10 degraus.
+       Contraste com texto branco por cima, calculado:
+         400 2,50 · 500 3,43 · 600 4,76 · 700 6,47 · 800 8,60 · 900 10,85
+       Ou seja: laranja VIBRANTE (≤500) só vive em ÁREA — faixa, fundo,
+       ilustração. Texto e botão exigem 600 ou mais escuro. Não é
+       limitação, é o que faz laranja ser bonito e legível ao mesmo tempo.
+       ───────────────────────────────────────────────────────────── */
+    --color-brand-50: #fff2eb;    /* fundo suave — o `--primary-soft` do desenho */
+    --color-brand-100: #ffe0d0;
+    --color-brand-200: #ffc2a4;
+    --color-brand-300: #ff9d6b;
+    --color-brand-400: #ff7a35;
+    --color-brand-500: #ff5a0a;   /* O LARANJA DA MARCA. 3,13:1 — área, ícone,
+                                     barra, estado ativo. NUNCA texto nem fundo
+                                     de botão: não passa 4,5:1. */
+    --color-brand-600: #d04304;   /* AÇÃO — 4,68:1, o mais vivo que ainda passa
+                                     com texto branco por cima */
+    --color-brand-700: #ad3803;   /* hover/active e texto de marca — 5,87:1 */
+    --color-brand-800: #8c2d03;
+    --color-brand-900: #6b2202;
+
+    /* ─────────────────────────────────────────────────────────────
+       SEMÂNTICAS — quatro famílias INDEPENDENTES da marca.
+       Antes, `info` era byte a byte igual a `brand-700` e `focus` igual
+       a `brand-500`: trocar a marca deixaria os dois para trás com o
+       índigo antigo, justamente nos pontos mais repetidos da tela.
+       ───────────────────────────────────────────────────────────── */
+    --color-success: #0a6b45;        /* 6,56:1 sobre branco */
+    --color-success-soft: #dcf7e8;
+    --color-success-line: #a7e8c8;
+
+    --color-warning: #8a6100;        /* 5,54:1 — ÂMBAR amarelado, afastado do laranja da marca */
+    --color-warning-soft: #fff3ce;
+    --color-warning-line: #f5dfa0;
+
+    --color-danger: #a62b1f;         /* 7,03:1 — texto/ícone sobre fundo soft */
+    --color-danger-soft: #ffe5e8;
+    --color-danger-line: #f5c6c0;
+    --color-danger-solid: #c0392b;   /* ÚNICO vermelho sólido do sistema */
+
+    --color-info: #0b6e99;           /* 5,67:1 — AZUL, complementar do laranja. Não é a marca. */
+    --color-info-soft: #e5efff;
+    --color-info-line: #b8dff0;
+
+    --color-focus: #d04304;          /* 4,68:1 — próprio token, não apelido da rampa */
+
+    /* Versões BRILHANTES das semânticas, para preencher área (ícone, barra,
+       ponto do selo). São as do desenho; nenhuma serve como texto — para isso
+       existem os tokens escuros acima. */
+    --color-success-solid: #16a34a;
+    --color-warning-solid: #f59e0b;
+    --color-info-solid: #3b82f6;
+
+    /* ─────────────────────────────────────────────────────────────
+       ESTÁGIOS DO PIPELINE
+       Paleta fechada: a posição do Projeto na esteira. Cada etapa tem
+       matiz próprio para o olho percorrer o fluxo e reconhecer onde
+       está — a fileira monocromática não dizia nada.
+
+       Duas correções em relação à primeira versão:
+
+       1. `created` e `design` eram os dois laranja (#f05a24, #ef6c22) e
+          `production` era amarelo. Como a maioria dos Projetos vive
+          justamente nessas três primeiras etapas, o estágio — o dado
+          mais repetido do sistema — saía sempre laranja ou âmbar. Agora
+          a rampa ANDA pelo espectro, e nenhum estágio é laranja:
+          laranja é AÇÃO, e posição na esteira não é ação.
+
+       2. A paleta só era usada no gráfico do dashboard; as listas e o
+          cabeçalho do Projeto mostravam tudo como `info` azul ou cinza.
+          Agora o StatusBadge lê daqui (ver variantes `stage*`).
+
+       Fora do fluxo, status continua usando success/warning/danger/info:
+       estes tons são posição na esteira, não juízo sobre o projeto.
+       Todos os pares texto/fundo passam 4,5:1 — conferidos, não estimados.
+       ───────────────────────────────────────────────────────────── */
+    --color-stage-design: #7b3fbf;        /* roxo — 6,35:1 */
+    --color-stage-design-soft: #f3ecfd;
+    --color-stage-production: #8a6100;    /* âmbar — está no forno. 5,54:1 */
+    --color-stage-production-soft: #fff3ce;
+    --color-stage-assembly: #0f766e;      /* teal — 5,47:1 */
+    --color-stage-assembly-soft: #d8f5f1;
+    --color-stage-shipping: #1d63b8;      /* azul — 5,95:1 */
+    --color-stage-shipping-soft: #e4eefc;
+    /* `stock`, não `in_stock`: sublinhado em nome de token vira escape de
+       espaço nas classes do Tailwind. */
+    --color-stage-stock: #4338ca;         /* índigo — o estágio que abre o resgate. 7,90:1 */
+    --color-stage-stock-soft: #e8e8fd;
+    --color-stage-done: #0a6b45;          /* verde — 6,56:1 */
+    --color-stage-done-soft: #dcf7e8;
+
+    /* O CAMINHO JÁ PERCORRIDO da esteira do Projeto.
+       Era a laranja da marca, e uma esteira inteira dela dizia "tudo isto é
+       WeLog" em vez de "tudo isto já passou" — a cor perdia o trabalho de
+       separar o que aconteceu do que ainda vai acontecer. Verde, e brilhante:
+       é a mesma família do "concluído", puxada para a luz.
+       3,4:1 sobre branco — serve de preenchimento e de moldura, nunca de
+       texto; o ✓ que vai em cima dele é branco. */
+    --color-trail: #0d9b63;
+
+    /* ─────────────────────────────────────────────────────────────
+       ELEVAÇÃO — a sombra deriva do `ink`, então acompanha o neutro
+       em vez de congelar o RGB antigo em decimal.
+       Modais e menus recebem elevação forte.
+
+       O cartão trocou BORDA por SOMBRA. A sombra antiga (8px de raio a
+       3,5% de opacidade) era invisível na prática, e o que separava o
+       cartão do fundo era o traço cinza em volta — daí a tela inteira
+       parecer uma planilha de caixas. Sombra larga e difusa faz o mesmo
+       trabalho sem desenhar o contorno: o bloco flutua em vez de ser
+       cercado. É o que dá o ar de leveza na referência.
+       ───────────────────────────────────────────────────────────── */
+    --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+    --shadow-card: 0 1px 3px rgb(15 23 42 / 0.04), 0 6px 20px -4px rgb(15 23 42 / 0.07);
+    --shadow-card-hover: 0 2px 6px rgb(15 23 42 / 0.05), 0 12px 28px -6px rgb(15 23 42 / 0.12);
+    --shadow-overlay: 0 12px 32px -8px rgb(28 25 23 / 0.16), 0 4px 8px -4px rgb(28 25 23 / 0.08);
+    /* Elevação COLORIDA, para a peça que é puro momento de marca (o selo da
+       entrada). Sombra cinza sob um objeto laranja lê como sujeira; sombra da
+       própria cor lê como luz. */
+    --shadow-brand: 0 10px 24px -6px rgb(208 67 4 / 0.45);
+    --shadow-brand-sm: 0 4px 10px -3px rgb(208 67 4 / 0.35);
+    /* Mesma ideia em verde, para a única ação de confirmação que não é da
+       marca: liberar o resgate. */
+    --shadow-success: 0 10px 24px -6px rgb(10 107 69 / 0.42);
+    --shadow-success-sm: 0 4px 10px -3px rgb(10 107 69 / 0.32);
+    /* O brilho do caminho percorrido: halo curto colado no marcador, não
+       elevação. É o que faz o verde ler como luz acesa e não como preenchimento
+       chapado — e é só nesta esteira que ele aparece. */
+    --shadow-trail: 0 0 0 3px rgb(13 155 99 / 0.16), 0 0 14px -1px rgb(13 155 99 / 0.6);
+    /* Cartão de situação: branco como os outros, com a cor só no contorno, um
+       fio de 1px e um halo curto. Substitui o bloco de fundo colorido chapado
+       (verde, laranja), que pesava e destoava das telas brancas. O tom diz o
+       estado; o cartão continua sendo um cartão. */
+    --shadow-glow-success: 0 0 0 1px rgb(13 155 99 / 0.22), 0 0 22px -6px rgb(13 155 99 / 0.32), 0 6px 20px -4px rgb(15 23 42 / 0.05);
+    --shadow-glow-warning: 0 0 0 1px rgb(245 158 11 / 0.30), 0 0 22px -6px rgb(245 158 11 / 0.32), 0 6px 20px -4px rgb(15 23 42 / 0.05);
+    --shadow-glow-brand: 0 0 0 1px rgb(255 90 10 / 0.20), 0 0 22px -6px rgb(255 90 10 / 0.28), 0 6px 20px -4px rgb(15 23 42 / 0.05);
+    /* Elevação de convite — só o portal usa, para o presente sair do plano */
+    --shadow-gift: 0 16px 40px -12px rgb(156 68 15 / 0.22), 0 4px 12px -6px rgb(28 25 23 / 0.08);
+
+    /* ─────────────────────────────────────────────────────────────
+       DENSIDADE — alturas de controle (alvo de toque)
+       ───────────────────────────────────────────────────────────── */
+    --spacing-control-sm: 2.25rem;    /* 36px — ação por linha de tabela */
+    --spacing-control-md: 2.5rem;     /* 40px — padrão da área operacional */
+    --spacing-control-touch: 2.75rem; /* 44px — PISO de toque (WCAG 2.5.8); era `min-h-11` de memória em 7 arquivos */
+    --spacing-control-lg: 3rem;       /* 48px — portal e autenticação */
+    /* 240px. Era 220 e cortava "Importações Parceiros" por 7px — medido, não
+       estimado. A folga é de 20px de propósito: a renderização da Inter varia
+       entre sistemas, e 7px de sobra deixaria o rótulo cortado na máquina de
+       alguém. Truncar nome de destino é pior que a coluna ser um pouco mais
+       larga: ninguém clica no que não consegue ler. */
+    --spacing-sidebar: 15rem;
+
+    /* Respiro entre BLOCOS. O app inteiro tinha um único valor vertical
+       acima de 24px, usado uma vez — por isso tudo parecia empilhado
+       com a mesma importância. Agrupar por proximidade precisa de escala. */
+    --spacing-block: 2rem;            /* 32px — entre seções da área operacional */
+    --spacing-block-lg: 3.5rem;       /* 56px — entre blocos do portal */
+    --spacing-block-xl: 5rem;         /* 80px — respiro de abertura do portal */
+
+    /* ───────────────────────────────────────────────────────────── */
+    --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   CAMADA SEMÂNTICA — por INTENÇÃO, não por matiz.
+   O componente passa a dizer o que quer ("ação primária"), não qual
+   tinta usar. Sem esta camada, `bg-brand-600` significava nove coisas
+   diferentes conforme o arquivo, e trocar a marca obrigava a reabrir
+   cada um para adivinhar qual.
+
+   Fica FORA do @theme de propósito: são apelidos de leitura, não geram
+   utilitário novo, e podem ser redefinidos por escopo (ver o portal).
+   ═════════════════════════════════════════════════════════════════ */
+:root {
+    --color-action: var(--color-brand-600);
+    --color-action-hover: var(--color-brand-700);
+    --color-action-text: var(--color-ink-inverse);
+    --color-action-soft: var(--color-brand-50);
+    --color-action-soft-text: var(--color-brand-700);
+
+    /* Papel que NÃO EXISTIA e é a razão técnica do "sem vida": nenhuma
+       cor do sistema tinha a função de dizer "isto é bom". As três
+       cores do portal além do cinza eram alarme e validação. */
+    --color-celebration: var(--color-brand-500);
+    --color-celebration-soft: var(--color-brand-50);
+    --color-celebration-strong: var(--color-brand-400);
+}
+
+@layer base {
+    /* Modal e drawer travam a rolagem com `overflow: hidden` no body, o que
+       propaga para o viewport e apaga a barra de rolagem. Sem a calha
+       reservada, todo o conteúdo salta ~15px para a direita ao abrir o
+       diálogo e volta ao fechar — em Windows e Linux, onde a barra ocupa
+       espaço. Reservar a calha desde o início elimina o salto. */
+    html {
+        scrollbar-gutter: stable;
+    }
+
+    /* Foco visível único em toda a interface. Nenhum componente define
+       o seu próprio anel de foco em campo (o `focus:ring-4` do UiInput sai). */
+    :focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 2px;
+        border-radius: 0.375rem;
+    }
+
+    /* Cabeçalho de contexto é sticky (64px). Sem isto, o foco de teclado
+       fica escondido atrás dele — WCAG 2.2 SC 2.4.11. */
+    :where(a, button, input, select, textarea, [tabindex]) {
+        scroll-margin-top: 5rem;
+    }
+
+    body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        font-feature-settings: 'cv11', 'ss01';
+        letter-spacing: -0.006em;
+        background-color: var(--color-canvas);
+        color: var(--color-ink);
+    }
+
+    ::selection {
+        background-color: var(--color-brand-100);
+        color: var(--color-brand-700);
+    }
+
+    h1, h2, h3 {
+        letter-spacing: -0.02em;
+    }
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   ESCOPO DO PORTAL
+   As duas superfícies têm necessidades OPOSTAS e compartilham a mesma
+   base. A operação é densa e diária: ali cor é INFORMAÇÃO e decoração
+   atrapalha quem passa 8h procurando o que precisa de atenção. O portal
+   é uso único, no celular, de alguém que ganhou um presente.
+
+   Antes, `PortalLayout` e `AppLayout` tinham a raiz idêntica caractere
+   por caractere — não havia como diferenciar sem alterar prop a prop.
+   Com o escopo, a diferença vira redefinição de PAPEL num lugar só.
+   ═════════════════════════════════════════════════════════════════ */
+[data-surface='portal'] {
+    /* Fundo mais quente: o portal acolhe, não apresenta dados */
+    --color-canvas: #fdf9f3;
+    /* Sombra que tira o presente do plano — proibida na operação */
+    --shadow-card: var(--shadow-gift);
+}
+
+@layer utilities {
+    /* Fundo de destaque das telas públicas (AuthCard). Deriva do token da
+       marca: antes era indigo cravado em hexadecimal, e um dos dois
+       matizes nem existia na rampa — a troca de marca o deixaria para trás. */
+    .bg-mesh {
+        background-image:
+            radial-gradient(60% 55% at 15% 0%, color-mix(in oklab, var(--color-brand-400) 14%, transparent) 0%, transparent 60%),
+            radial-gradient(50% 50% at 100% 0%, color-mix(in oklab, var(--color-brand-300) 16%, transparent) 0%, transparent 55%);
+    }
+
+    /* Superfície de celebração do portal: o presente sobre calor, não
+       sobre cinza. Usar em cartão de kit e na confirmação do resgate. */
+    .bg-celebration {
+        background-image:
+            radial-gradient(90% 70% at 50% 0%, color-mix(in oklab, var(--color-celebration) 12%, transparent) 0%, transparent 70%);
+        background-color: var(--color-brand-50);
+    }
+
+    .scrollbar-slim {
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-line-strong) transparent;
+    }
+    .scrollbar-slim::-webkit-scrollbar { height: 6px; width: 6px; }
+    .scrollbar-slim::-webkit-scrollbar-thumb {
+        background-color: var(--color-line-strong);
+        border-radius: 9999px;
+    }
+
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateX(12px) scale(0.98); }
+        to   { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    .animate-toast-in { animation: toast-in 0.28s var(--ease-out-soft) both; }
+
+    @keyframes overlay-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+    .animate-overlay-in { animation: overlay-in 0.15s var(--ease-out-soft) both; }
+
+    @keyframes drawer-in {
+        from { opacity: 0; transform: translateX(16px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .animate-drawer-in { animation: drawer-in 0.18s var(--ease-out-soft) both; }
+
+    @keyframes skeleton-pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.45; }
+    }
+    .skeleton {
+        background-color: var(--color-surface-muted);
+        animation: skeleton-pulse 1.6s var(--ease-out-soft) infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .animate-toast-in,
+        .animate-overlay-in,
+        .animate-drawer-in,
+        .skeleton { animation: none; }
+    }
+}

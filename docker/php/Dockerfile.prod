@@ -1,0 +1,109 @@
+# Imagem de PRODUÇÃO — multi-stage: build de assets + dependências + php-fpm.
+
+# --- Estágio 1: build dos assets (Vite/Vue) ---
+FROM node:22-alpine AS assets
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY resources ./resources
+COPY vite.config.js ./
+COPY public ./public
+
+# O Vite injeta as VITE_* no bundle em tempo de build, e o .env não entra na
+# imagem (está no .dockerignore) — então elas chegam por build arg. Vazias por
+# padrão: sem DSN o Sentry do navegador simplesmente não inicializa.
+# O DSN de browser é público por natureza; fica embutido no JS de propósito.
+ARG VITE_SENTRY_DSN=""
+ARG VITE_SENTRY_RELEASE=""
+ARG VITE_SENTRY_ENVIRONMENT="production"
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
+    VITE_SENTRY_RELEASE=$VITE_SENTRY_RELEASE \
+    VITE_SENTRY_ENVIRONMENT=$VITE_SENTRY_ENVIRONMENT
+
+RUN npm run build
+
+# --- Estágio 2: dependências PHP sem dev ---
+FROM composer:2 AS vendor
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction
+
+# --- Estágio 3: runtime php-fpm ---
+FROM php:8.4-fpm AS runtime
+
+RUN apt-get update && apt-get install -y \
+    git curl libpng-dev libonig-dev libxml2-dev libpq-dev libgmp-dev libzip-dev zip unzip \
+    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gmp gd zip \
+    && pecl install redis && docker-php-ext-enable redis \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Config de produção do PHP (OPcache ligado)
+#
+# `max_accelerated_files` e `validate_timestamps` não estavam aqui, e os dois
+# doem sob carga. O padrão de 10.000 arquivos não cabe numa aplicação Laravel
+# com vendor (são ~14 mil): passado o teto, o OPcache para de cachear o resto e
+# aquelas classes são recompiladas em TODA requisição. E `validate_timestamps=1`
+# faz o PHP dar um `stat` em cada arquivo incluído a cada requisição, para ver
+# se mudou — em produção o código só muda no deploy, e o deploy reconstrói a
+# imagem, então a verificação é trabalho de I/O jogado fora milhares de vezes
+# por minuto.
+RUN { \
+      echo "opcache.enable=1"; \
+      echo "opcache.enable_cli=0"; \
+      echo "opcache.jit=1255"; \
+      echo "opcache.jit_buffer_size=64M"; \
+      echo "opcache.memory_consumption=192"; \
+      echo "opcache.interned_strings_buffer=16"; \
+      echo "opcache.max_accelerated_files=20000"; \
+      echo "opcache.validate_timestamps=0"; \
+      echo "memory_limit=512M"; \
+      echo "upload_max_filesize=75M"; \
+      echo "post_max_size=75M"; \
+      echo "expose_php=Off"; \
+    } > /usr/local/etc/php/conf.d/prod.ini
+
+# Pool do FPM dimensionado (o da imagem tem 5 processos — ver www.prod.conf).
+#
+# Os valores vivem em variável de ambiente para o tamanho do pool acompanhar o
+# tamanho da máquina sem reconstruir a imagem: o .env de produção sobrescreve,
+# e `up -d app` já vale. Os padrões abaixo são os da VPS pequena de hoje (2 GB)
+# — em campanha, ver a tabela de docs/CAPACIDADE.md.
+#
+# Precisam existir como ENV mesmo quando o .env não os define: o FPM não sabe
+# expandir variável ausente e se recusa a subir.
+ENV PHP_FPM_MODE=dynamic \
+    PHP_FPM_MAX_CHILDREN=12 \
+    PHP_FPM_START_SERVERS=4
+
+COPY docker/php/www.prod.conf /usr/local/etc/php-fpm.d/zz-www.conf
+RUN rm -f /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.default
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www
+
+# Código + vendor + assets compilados
+COPY . .
+COPY --from=vendor /app/vendor ./vendor
+COPY --from=assets /app/public/build ./public/build
+
+# Cópia do public/ compilado fora do ponto de montagem do volume `app-public`.
+# O entrypoint republica isto a cada subida — sem essa etapa o volume ficaria
+# com os assets do primeiro deploy para sempre.
+RUN cp -a public /opt/public-dist
+
+COPY docker/php/entrypoint.prod.sh /usr/local/bin/entrypoint.sh
+
+# Autoload otimizado e permissões. `public` e `/opt/public-dist` entram no
+# chown porque os volumes herdam a dona do conteúdo da imagem na 1ª criação.
+RUN composer dump-autoload --optimize --no-dev \
+    && chmod +x /usr/local/bin/entrypoint.sh \
+    && chown -R www-data:www-data storage bootstrap/cache public /opt/public-dist
+
+# Sem `USER www-data`: o entrypoint precisa de root para corrigir a posse de
+# volumes criados por imagens anteriores. Ele derruba o privilégio antes de
+# executar o comando — php-fpm pela diretiva `user` do pool, os demais
+# (queue:work, schedule:work) via setpriv.
+EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php-fpm"]

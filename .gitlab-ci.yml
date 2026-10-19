@@ -1,0 +1,188 @@
+# Pipeline da WeLog. Mesmo modelo do projeto Virttus: runner self-hosted na
+# própria VPS (tag `welog-platform`), então o deploy é `cd` + docker compose —
+# sem SSH, sem chave, sem registry.
+#
+# A única coisa a mais aqui é o stage de teste: a suíte roda em SQLite em
+# memória com as integrações forçadas em `fake` (phpunit.xml), leva ~1 min e
+# evita publicar código quebrado.
+
+stages:
+  - test
+  - deploy
+
+testes:
+  stage: test
+  image: php:8.4-cli
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git unzip libzip-dev > /dev/null
+    # `zip` é a única extensão extra que a suíte precisa (OpenSpout, XLSX).
+    - docker-php-ext-install zip > /dev/null
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    # O .env precisa existir antes do composer install: o post-autoload-dump
+    # roda `package:discover`, e sem os providers a suíte nem boota.
+    - cp .env.example .env
+    - composer install --no-interaction --prefer-dist --no-progress -q
+    - php artisan key:generate -q
+  script:
+    - php artisan test
+  cache:
+    key:
+      files: [composer.lock]
+    paths: [vendor/]
+
+# O frontend é compilado AQUI, e não só no deploy.
+#
+# Em 23/09/2026 um componente foi apagado num commit sem a alteração que
+# removia o `import` dele. Os testes PHP passaram — eles não olham o Vue — e o
+# erro só apareceu no `npm run build` DENTRO do deploy de produção, com os
+# workers já parados. Qualquer import quebrado tem de derrubar a esteira antes
+# de alguém encostar no servidor.
+#
+# Roda em paralelo com `testes`: são ~40s e não atrasam o pipeline.
+assets:
+  stage: test
+  image: node:22-alpine
+  script:
+    - npm ci
+    - npm run build
+  cache:
+    key:
+      files: [package-lock.json]
+    paths: [node_modules/]
+
+# Dependências com vulnerabilidade conhecida derrubam a esteira.
+#
+# É a parte contínua dos "testes de vulnerabilidade regulares" do questionário
+# de segurança dos clientes (o pentest anual é a outra, ver docs/SEGURANCA.md).
+# `composer audit` consulta a base de advisories do Packagist; `npm audit`
+# barra só alta/crítica — as baixas viram ruído e a esteira passa a ser
+# ignorada, que é pior do que não ter o passo.
+#
+# Não tem `allow_failure` de propósito. Se um advisory sem correção disponível
+# travar um deploy urgente, a saída é ignorá-lo nominalmente no composer.json
+# (`config.audit.ignore`), com o motivo — nunca desligar o passo.
+dependencias:
+  stage: test
+  image: composer:2
+  script:
+    # `--locked` lê só o composer.lock: não precisa instalar nada.
+    - composer audit --locked --no-interaction
+
+dependencias_js:
+  stage: test
+  image: node:22-alpine
+  script:
+    - npm audit --omit=dev --audit-level=high
+
+deploy_prod:
+  stage: deploy
+  # resource_group: dois deploys simultâneos se atropelariam no mesmo diretório.
+  resource_group: production
+  tags:
+    - welog-platform
+  only:
+    - main
+  script:
+    - cd /home/welog-platform
+    # Evita "detected dubious ownership" quando o runner roda como usuário
+    # diferente do dono do diretório.
+    - git config --global --add safe.directory /home/welog-platform
+    # Deploy idempotente: força a working tree para o estado exato do remoto.
+    - git fetch origin main
+    - git reset --hard origin/main
+
+    # Release do Sentry = SHA publicado. Sem isto todo erro aparece sem versão,
+    # e não dá para saber se um deploy introduziu ou resolveu o problema.
+    # Vai para o .env porque o build do frontend (Vite) também precisa dele.
+    - sed -i '/^SENTRY_RELEASE=/d;/^VITE_SENTRY_RELEASE=/d' .env
+    - echo "SENTRY_RELEASE=$CI_COMMIT_SHORT_SHA" >> .env
+    - echo "VITE_SENTRY_RELEASE=$CI_COMMIT_SHORT_SHA" >> .env
+
+    # ORDEM IMPORTA: constrói primeiro, para os workers depois.
+    #
+    # Era o contrário, e um build que falha deixava produção MUTILADA: os
+    # workers ficavam parados (o `stop` já tinha rodado), o passo seguinte
+    # abortava e ninguém os subia de volta. O site continuava no ar servindo a
+    # imagem antiga, mas fila, e-mail, webhook e agendador ficavam fora — sem
+    # nenhum alarme, porque para o GitLab o job só "falhou". Aconteceu em
+    # 23/09/2026.
+    #
+    # Construindo antes, um build quebrado não encosta em nada: a esteira para
+    # e produção segue exatamente como estava.
+    #
+    # `--build` é obrigatório: os assets do frontend são compilados DENTRO da
+    # imagem (multi-stage). Sem rebuild, backend novo servindo JavaScript velho.
+    - docker compose -f docker-compose.prod.yml build app
+
+    # O build do frontend (Vite/Rolldown) pede ~1,15 GB de pico — medido em
+    # 2026-08-06, com 2679 módulos. Numa VPS pequena isso concorre com os
+    # serviços e o kernel mata o build (exit 137). Parar worker e scheduler
+    # ajuda, mas NÃO substitui swap: sem swap, uma VPS de 2 GB não fecha a
+    # conta. Ver docs/DEPLOY.md § "Build morrendo com exit 137".
+    #
+    # Com o build já feito, parar aqui serve ao passo seguinte: os workers não
+    # podem seguir rodando código antigo contra o banco que vai migrar.
+    # worker e scheduler não atendem requisição; app e nginx seguem servindo.
+    - docker compose -f docker-compose.prod.yml stop worker worker-webhooks worker-imports worker-mail scheduler || true
+    # worker e scheduler usam a mesma imagem — recriados para não seguirem
+    # rodando código antigo contra o banco já migrado.
+    - docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate app worker worker-webhooks worker-imports worker-mail scheduler
+
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force
+
+    # Link public/storage -> storage/app/public. O nginx já monta os dois
+    # volumes contando com este symlink (ver docker-compose.prod.yml), mas
+    # nada no repositório chegava a criá-lo: sem ele, TODO arquivo enviado
+    # pela plataforma responde 404 — foto de kit e logo de campanha.
+    #
+    # `public/` é volume nomeado, então o link sobrevive ao recreate e isto
+    # vira no-op nos deploys seguintes. `--force` porque `storage:link`
+    # ABORTA quando o link já existe, e um passo que falha no segundo deploy
+    # derrubaria a esteira inteira.
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan storage:link --force
+
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan optimize:clear
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan config:cache
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan route:cache
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan view:cache
+    # `queue:restart` é um SINAL, não um restart: grava uma chave no cache que
+    # o worker lê ao terminar o job atual. Roda no `app` de propósito — no
+    # worker, o passo derruba o deploy inteiro quando o container está em ciclo
+    # de reinício ("init process is not running"), que é justamente quando mais
+    # se precisa que o deploy termine e deixe os logs para trás.
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan queue:restart
+
+    # Diagnóstico, não gate: se worker ou scheduler não subiram, o log do
+    # pipeline mostra o motivo em vez de exigir SSH na VPS.
+    - docker compose -f docker-compose.prod.yml ps worker worker-webhooks worker-imports worker-mail scheduler
+    - docker compose -f docker-compose.prod.yml logs --tail 40 worker || true
+
+    # Sem `--force-recreate`: o nginx só é recriado quando a definição dele no
+    # compose muda (volume novo, porta nova). É o que faz uma alteração de mount
+    # valer — reload de configuração não remonta volume. Nos deploys em que nada
+    # mudou, isto é no-op e o site não pisca.
+    - docker compose -f docker-compose.prod.yml up -d --no-deps nginx
+
+    # O prod.conf é bind-mount: o `git reset` acima já trocou o arquivo, mas
+    # trocar um bind mount não recria o container — e o nginx só releria no
+    # ciclo de 6h do próprio container. Sem este reload, mudança de configuração
+    # do nginx demoraria até 6h para valer.
+    # certbot, db, redis e backup seguem intocados de propósito.
+    #
+    # O fallback self-signed do `command` do nginx só roda quando o container
+    # é CRIADO. Se o certificado sumir com o nginx já de pé (emissão do
+    # init-letsencrypt.sh que falhou depois de apagar o antigo), o `nginx -t`
+    # abaixo aborta o deploy com "cannot load certificate". Recria o fallback
+    # aqui; o init-letsencrypt.sh o substitui pelo certificado real.
+    - >-
+      docker compose -f docker-compose.prod.yml exec -T nginx sh -c
+      '[ -f /etc/letsencrypt/live/welog/fullchain.pem ] || {
+      apk add --no-cache openssl >/dev/null 2>&1;
+      mkdir -p /etc/letsencrypt/live/welog;
+      rm -f /etc/letsencrypt/live/welog/fullchain.pem /etc/letsencrypt/live/welog/privkey.pem;
+      openssl req -x509 -nodes -newkey rsa:2048 -days 3650
+      -keyout /etc/letsencrypt/live/welog/privkey.pem
+      -out /etc/letsencrypt/live/welog/fullchain.pem
+      -subj "/CN=localhost"; }'
+    - docker compose -f docker-compose.prod.yml exec -T nginx nginx -t
+    - docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload

@@ -1,0 +1,32 @@
+### Webhook da Reconhece — cadastro de produto da vitrine
+#
+# Abra no VS Code com a extensão REST Client e clique em "Send Request".
+# Troque @host e @token antes. O token é a credencial inteira do webhook
+# (RECONHECE_WEBHOOK_TOKEN): não salve o valor real neste arquivo.
+#
+# A amarração com a Omie é automática quando `sku` ou `parentCode` é igual a
+# um código já cadastrado em Produtos. Para ver o vínculo acontecer, troque o
+# código do JSON por um que exista; o que não casar volta em `sem_vinculo`.
+#
+# Pelo terminal (bash ou PowerShell 7):
+#   curl -X POST "https://SEU-DOMINIO/webhooks/reconhece/TOKEN" \
+#     -H "Content-Type: application/json" \
+#     --data-binary "@scripts/smoke/reconhece/produto-avulso.json"
+
+@host = https://SEU-DOMINIO
+@token = COLE_AQUI_O_TOKEN
+
+### 1. Verificação da URL — espera {"status":"ok","service":"welog"}
+GET {{host}}/webhooks/reconhece/{{token}}
+
+### 2. Um produto só (avulso: parentCode igual ao sku)
+POST {{host}}/webhooks/reconhece/{{token}}
+Content-Type: application/json
+
+< ./produto-avulso.json
+
+### 3. Lote — avulso, variações por cor/tamanho/voltagem e um item desligado
+POST {{host}}/webhooks/reconhece/{{token}}
+Content-Type: application/json
+
+< ./catalogo-lote.json

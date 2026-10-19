@@ -1,0 +1,45 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+.claude/agents/vue-expert.md
+.claude/agents/laravel-specialist.md
+.claude/agents/code-reviewer.md
+.claude/agents/qa-expert.md
+docs/REVISAO-CODIGO.md
+docs/PLANO.md
+docs/PLANO.md
+.claude/skills
+# Ajustes de compose da MAQUINA de quem desenvolve (porta livre no host,
+# vendor/node_modules em volume). Nao pertence ao repositorio: o que vale
+# para uma maquina quebra a de outro, e no servidor o deploy passa
+# `-f docker-compose.prod.yml`, que ignora override.
+docker-compose.override.yml
+
+# Qualquer variação de .env (backups inclusive) e arquivos .bak
+.env.*
+!.env.example
+*.bak

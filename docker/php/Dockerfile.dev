@@ -1,0 +1,50 @@
+# Imagem de DESENVOLVIMENTO — código via bind-mount, sem build de assets.
+# O Vite roda em serviço próprio (node), ver docker-compose.dev.yml.
+# PHP >= 8.4 exigido pelo Laravel 13 / Symfony 8
+FROM php:8.4-fpm
+
+RUN apt-get update && apt-get install -y \
+    git curl libpng-dev libonig-dev libxml2-dev libpq-dev libgmp-dev libzip-dev zip unzip \
+    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gmp gd zip \
+    && pecl install redis && docker-php-ext-enable redis \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN echo "upload_max_filesize=75M" >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "post_max_size=75M" >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "memory_limit=512M" >> /usr/local/etc/php/conf.d/uploads.ini
+
+COPY docker/php/opcache-dev.ini /usr/local/etc/php/conf.d/opcache-dev.ini
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+ARG user=welog
+ARG uid=1000
+RUN useradd -G www-data,root -u $uid -d /home/$user $user \
+    && mkdir -p /home/$user/.composer \
+    && chown -R $user:$user /home/$user
+
+# OPcache TAMBÉM no desenvolvimento.
+#
+# O normal é deixá-lo de fora aqui, porque em produção ele esconde alteração de
+# arquivo. Só que este bind-mount atravessa a fronteira Windows↔Linux do Docker
+# Desktop, e ler arquivo por ele custa ~20ms — contra 0,03ms dentro do
+# container. Laravel abre mais de mil arquivos por requisição: sem OPcache, são
+# cinco segundos de leitura de disco ANTES de a primeira linha do código rodar.
+#
+# `revalidate_freq=2` é o meio-termo honesto: o PHP só volta a perguntar ao
+# disco se um arquivo mudou depois de dois segundos. Editar e atualizar a tela
+# continua funcionando; o que some é a releitura de mil arquivos a cada F5.
+RUN { \
+      echo "opcache.enable=1"; \
+      echo "opcache.enable_cli=0"; \
+      echo "opcache.memory_consumption=256"; \
+      echo "opcache.interned_strings_buffer=16"; \
+      echo "opcache.max_accelerated_files=20000"; \
+      echo "opcache.validate_timestamps=1"; \
+      echo "opcache.revalidate_freq=2"; \
+    } > /usr/local/etc/php/conf.d/opcache-dev.ini
+
+WORKDIR /var/www
+USER $user
+EXPOSE 9000
+CMD ["php-fpm"]

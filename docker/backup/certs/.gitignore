@@ -1,0 +1,6 @@
+# O CA do banco gerenciado é baixado no servidor (painel da DigitalOcean →
+# Databases → Connection details → Download CA certificate) e não vai para o
+# repositório: nem por ser segredo (não é), mas por ser específico do cluster.
+*.crt
+*.pem
+!.gitignore

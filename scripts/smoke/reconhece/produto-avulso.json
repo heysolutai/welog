@@ -1,0 +1,14 @@
+{
+  "sku": "SUV-PINCEL-01",
+  "enabled": true,
+  "product": {
+    "parentCode": "SUV-PINCEL-01",
+    "name": "Kit Pincéis Profissional Suvinil",
+    "description": "Conjunto com três pincéis profissionais.",
+    "productType": "Casa e Construção",
+    "department": "Ferramentas"
+  },
+  "images": [
+    "https://cdn.reconhece.com.br/suv-pincel-01.jpg"
+  ]
+}
